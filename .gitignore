@@ -2,3 +2,12 @@ __pycache__/
 *.pyc
 .venv/
 out/
+out_*/
+*.log
+*.stl
+*.step
+*.stp
+.DS_Store
+
+*.egg-info/
+demo_annotation.json

@@ -44,6 +44,8 @@ PIN = "19b9f1e9519235ae4a0f5e8dc6b029c08b87ff5f"
 TARBALL = f"https://codeload.github.com/faust-machines/fusion360-mcp-server/tar.gz/{PIN}"
 ADDIN_DIRNAME = "Fusion360MCP"
 MCP_NAME = "fusion360"
+BRIDGE = Path(__file__).resolve().parent.parent / "bridge"
+BRIDGE_NAME = "cadbridge"
 PORT = 9876
 ROOT = Path(__file__).resolve().parent.parent
 SKILL_SRC_NAME = "fusion2hermes"
@@ -309,15 +311,15 @@ def hermes(*args: str, stdin: str | None = None, timeout: int = 600) -> subproce
     return run([exe, *args], stdin=stdin, timeout=timeout)
 
 
-def register_mcp(py: Path) -> bool:
+def register_mcp(py: Path, name: str = MCP_NAME, module: str = "fusion360_mcp") -> bool:
     ls = hermes("mcp", "ls", timeout=180)
-    if MCP_NAME in (ls.stdout or ""):
-        say(INFO, f"'{MCP_NAME}' already registered - removing before re-adding")
-        hermes("mcp", "remove", MCP_NAME, stdin="y\n", timeout=180)
+    if name in (ls.stdout or ""):
+        say(INFO, f"'{name}' already registered - removing before re-adding")
+        hermes("mcp", "remove", name, stdin="y\n", timeout=180)
 
-    say(INFO, "registering the MCP server in Hermes")
-    cp = hermes("mcp", "add", MCP_NAME, "--command", str(py),
-                "--args", "-m", "fusion360_mcp", stdin="y\n", timeout=600)
+    say(INFO, f"registering the MCP server '{name}' in Hermes")
+    cp = hermes("mcp", "add", name, "--command", str(py),
+                "--args", "-m", module, stdin="y\n", timeout=600)
     out = f"{cp.stdout or ''}{cp.stderr or ''}"
 
     if "requires the 'mcp' Python SDK" in out:
@@ -326,14 +328,14 @@ def register_mcp(py: Path) -> bool:
         if pm.returncode != 0:
             say(BAD, "hermes pm install --extra mcp failed:\n" + (pm.stdout or "")[-1200:])
             return False
-        cp = hermes("mcp", "add", MCP_NAME, "--command", str(py),
-                    "--args", "-m", "fusion360_mcp", stdin="y\n", timeout=600)
+        cp = hermes("mcp", "add", name, "--command", str(py),
+                    "--args", "-m", module, stdin="y\n", timeout=600)
         out = f"{cp.stdout or ''}{cp.stderr or ''}"
 
     if "Saved '" in out or "Saved \"" in out:
         tools = re.search(r"\((\d+)/(\d+) tools enabled\)", out)
         detail = f" ({tools.group(1)} tools)" if tools else ""
-        say(OK, f"registered '{MCP_NAME}' in Hermes{detail}")
+        say(OK, f"registered '{name}' in Hermes{detail}")
         return True
     say(BAD, "registration did not report success:\n" + out[-1200:])
     return False
@@ -369,6 +371,79 @@ def install_skill() -> Path:
 
 
 # --------------------------------------------------------------------------- #
+# 5b. the CAD bridge (knowledge base + canvas + verified runner), also an MCP
+# --------------------------------------------------------------------------- #
+def ensure_bridge_venv() -> Path | None:
+    """Create bridge/.venv, install cadbridge into it, build the knowledge index."""
+    if not (BRIDGE / "pyproject.toml").is_file():
+        say(INFO, "no bridge/pyproject.toml in this checkout - skipping the CAD bridge")
+        return None
+    py = BRIDGE / ".venv" / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+    if not py.is_file():
+        uv = which("uv")
+        if uv:
+            say(INFO, "creating the bridge venv with uv (python 3.13)")
+            cp = run([uv, "venv", "--python", "3.13", str(BRIDGE / ".venv")], timeout=900)
+            if cp.returncode != 0:
+                cp = run([uv, "venv", "--python", "3.12", str(BRIDGE / ".venv")], timeout=900)
+            if cp.returncode != 0:
+                say(BAD, f"uv venv failed: {cp.stderr.strip()[:300]}")
+                uv = None
+        if not uv:
+            venv.EnvBuilder(with_pip=True).create(str(BRIDGE / ".venv"))
+        if not py.is_file():
+            say(BAD, f"bridge venv python not found at {py}")
+            return None
+
+    say(INFO, "installing cadbridge (build123d + mcp; this is the slow step)")
+    if which("uv"):
+        cp = run([which("uv"), "pip", "install", "--python", str(py), "-e", "."],
+                 cwd=BRIDGE, timeout=1800)
+    else:
+        cp = run([str(py), "-m", "pip", "install", "--quiet", "-e", "."],
+                 cwd=BRIDGE, timeout=1800)
+    if cp.returncode != 0:
+        say(BAD, "installing cadbridge failed:\n" + f"{cp.stdout[-800:]}\n{cp.stderr[-800:]}")
+        return None
+
+    index = BRIDGE / "cadbridge" / "corpus" / "index.json"
+    if index.is_file():
+        say(OK, "knowledge index already built")
+    else:
+        say(INFO, "building the knowledge index")
+        cp = run([str(py), "-m", "cadbridge.build_index"], cwd=BRIDGE, timeout=900)
+        if cp.returncode != 0 or not index.is_file():
+            say(BAD, "index build failed:\n" + f"{cp.stdout[-800:]}\n{cp.stderr[-800:]}")
+            return None
+        say(OK, f"knowledge index built ({index.stat().st_size // 1024} KB)")
+    return py
+
+
+def smoke_bridge(py: Path) -> bool:
+    """Prove the bridge works here: search the corpus and run a tiny verified part."""
+    code = (
+        "from cadbridge.rag import get_kb\n"
+        "from cadbridge import runner\n"
+        "kb = get_kb()\n"
+        "hits = kb.search('m3 clearance hole', k=3)\n"
+        "res = runner.run_code('from build123d import *\\n"
+        "part = Box(10, 10, 3, align=(Align.CENTER, Align.CENTER, Align.MIN))\\n')\n"
+        "print(len(hits), hits[0]['id'], res['ok'], round(res['volume'], 1), res['solids'])\n"
+    )
+    cp = run([str(py), "-c", code], cwd=BRIDGE, timeout=600)
+    out = (cp.stdout or "").strip().splitlines()
+    if cp.returncode != 0 or not out:
+        say(BAD, "bridge smoke test failed:\n" + f"{(cp.stdout or '')[-600:]}\n{(cp.stderr or '')[-600:]}")
+        return False
+    parts = out[-1].split()
+    if len(parts) == 5 and parts[2] == "True" and parts[3] == "300.0" and parts[4] == "1":
+        say(OK, f"bridge smoke test passed (search hits, {parts[3]} mm3 box, one solid)")
+        return True
+    say(BAD, f"unexpected bridge smoke output: {out[-1]}")
+    return False
+
+
+# --------------------------------------------------------------------------- #
 # 6. verification
 # --------------------------------------------------------------------------- #
 def verify(py: Path) -> int:
@@ -385,6 +460,19 @@ def verify(py: Path) -> int:
         say(OK, f"'{MCP_NAME}' registered in Hermes")
     else:
         say(BAD, f"'{MCP_NAME}' not registered - run: hermes mcp add {MCP_NAME} ...")
+        failures += 1
+
+    bpy = BRIDGE / ".venv" / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+    index = BRIDGE / "cadbridge" / "corpus" / "index.json"
+    if bpy.is_file() and index.is_file():
+        say(OK, "CAD bridge installed (venv + knowledge index)")
+    elif (BRIDGE / "pyproject.toml").is_file():
+        say(BAD, "CAD bridge not installed - run: python scripts/setup.py")
+        failures += 1
+    if BRIDGE_NAME in (ls.stdout or ""):
+        say(OK, f"'{BRIDGE_NAME}' registered in Hermes")
+    elif (BRIDGE / "pyproject.toml").is_file():
+        say(BAD, f"'{BRIDGE_NAME}' not registered - run: python scripts/setup.py")
         failures += 1
 
     if not port_open():
@@ -413,6 +501,8 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Connect Fusion 360 to Hermes over MCP")
     ap.add_argument("--check", action="store_true", help="verify only, change nothing")
     ap.add_argument("--skip-skill", action="store_true", help="do not copy the skill")
+    ap.add_argument("--skip-bridge", action="store_true",
+                    help="do not install the CAD bridge (knowledge + canvas + runner)")
     args = ap.parse_args(argv)
 
     print("Fusion2Hermes - bridging Fusion 360 to Hermes\n")
@@ -440,6 +530,11 @@ def main(argv: list[str] | None = None) -> int:
     ok = register_mcp(py)
     if not args.skip_skill:
         install_skill()
+
+    bpy = None if args.skip_bridge else ensure_bridge_venv()
+    if bpy:
+        smoke_bridge(bpy)
+        register_mcp(bpy, BRIDGE_NAME, "cadbridge.server")
 
     print()
     if port_open():

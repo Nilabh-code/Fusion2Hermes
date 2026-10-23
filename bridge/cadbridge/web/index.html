@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CAD canvas — mark up, measure, send</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div id="app">
+
+  <header id="top">
+    <div class="brand">
+      <span class="dot"></span>
+      <strong>CAD canvas</strong>
+      <span class="hint" id="sessionHint">mark up the part, calibrate one line, send</span>
+    </div>
+    <div class="top-actions">
+      <label class="file-btn">
+        Import image
+        <input type="file" id="fileInput" accept="image/*" hidden>
+      </label>
+      <button id="pasteBtn" class="ghost" title="Or press Ctrl+V with an image on the clipboard">Paste</button>
+      <button id="fitBtn" class="ghost">Fit</button>
+      <button id="zoomOut" class="ghost">−</button>
+      <span id="zoomLabel" class="zoom">100%</span>
+      <button id="zoomIn" class="ghost">+</button>
+      <button id="sendBtn" class="primary">Send to agent</button>
+    </div>
+  </header>
+
+  <main>
+    <aside id="tools">
+      <button class="tool" data-tool="pan" title="Pan (V / space-drag)">✋</button>
+      <button class="tool" data-tool="line" title="Line (1)">╱</button>
+      <button class="tool" data-tool="dim" title="Dimension line (2)">↔</button>
+      <button class="tool" data-tool="rect" title="Rectangle (3)">▭</button>
+      <button class="tool" data-tool="circle" title="Circle / hole (4)">◯</button>
+      <button class="tool" data-tool="poly" title="Polyline — outline (5)">⌇</button>
+      <button class="tool" data-tool="text" title="Text note (6)">T</button>
+      <button class="tool" data-tool="cal" title="Calibration line (C) — then type its real length">⇹</button>
+      <button class="tool" data-tool="erase" title="Erase — click a shape (E)">⌫</button>
+      <div class="spacer"></div>
+      <button class="ghost" id="undoBtn" title="Undo (Ctrl+Z)">↶</button>
+      <button class="ghost" id="clearBtn" title="Clear all ink">✕</button>
+    </aside>
+
+    <div id="stage">
+      <canvas id="cv"></canvas>
+      <div id="empty" class="empty">
+        <p><strong>Drop a photo here</strong></p>
+        <p class="dim">or use Import image / Ctrl+V</p>
+        <p class="dim small">Draw the outline, mark hole centres, and calibrate one line to a real
+          length so every measurement is in mm.</p>
+      </div>
+      <div id="status">
+        <span id="scaleOut">scale: not calibrated</span>
+        <span id="cursorOut">–</span>
+        <span id="selOut">no selection</span>
+      </div>
+      <div id="sentOverlay" class="overlay hidden">
+        <div class="card">
+          <h3>Sent to the agent</h3>
+          <p id="sentDetail"></p>
+          <button id="sentClose" class="ghost">Keep editing</button>
+        </div>
+      </div>
+    </div>
+
+    <aside id="panel">
+      <section>
+        <h4>Calibration</h4>
+        <p class="dim small">Pick the ⇹ tool, drag along something you know the size of, then
+          type its real length.</p>
+        <div class="row">
+          <input type="number" id="calInput" step="0.1" min="0.1" placeholder="real length (mm)">
+          <button id="calApply" class="ghost">Apply</button>
+        </div>
+        <p class="small" id="calOut">no calibration</p>
+      </section>
+
+      <section>
+        <h4>Label for next shape</h4>
+        <input type="text" id="labelInput" placeholder="e.g. servo body, M3 hole, hole spacing">
+      </section>
+
+      <section class="grow">
+        <h4>Shapes <span class="count" id="shapeCount">0</span></h4>
+        <ul id="shapeList"></ul>
+      </section>
+
+      <section>
+        <h4>Notes for the agent</h4>
+        <textarea id="notes" rows="3" placeholder="walls 3 mm, print flat, M2 screws, shaft on the left ..."></textarea>
+      </section>
+
+      <section>
+        <h4>What to build</h4>
+        <textarea id="prompt" rows="3" placeholder="servo mount bracket with a shaft slot, 3 mm walls"></textarea>
+      </section>
+    </aside>
+  </main>
+</div>
+<script src="/app.js"></script>
+</body>
+</html>

@@ -75,6 +75,50 @@ through a `CustomEvent`. 93 commands are exposed; see
 Personal-use licence limits (Autodesk's, not ours): 10 editable documents, no extensions,
 IGES/SAT export blocked. STEP/STL/F3D export all work.
 
+## Beyond tool calls: photo → verified part
+
+Telling an agent to "build a servo mount" and letting it loose on 93 tool calls is
+how you get something that looks right and doesn't fit. The repo also ships
+**`cadbridge`**, a second MCP server for the case where the input is a photo and a
+sentence:
+
+```
+photo ──▶ canvas ──▶ millimetres ──▶ knowledge ──▶ build123d script
+                                                       │
+                     ┌─────────────────────────────────┘
+                     ▼
+             cad_run_code ──▶ measured volume / bbox / solids
+                     │              │
+                     │        mismatch → repair, up to 3×
+                     ▼
+                  STEP ──▶ fusion_push_step ──▶ your Fusion session
+```
+
+| | |
+|---|---|
+| ![canvas](docs/img/canvas-annotation.png) | ![fusion](docs/img/servo-mount-in-fusion.png) |
+| *Trace the part, mark holes, calibrate one line — every shape comes back in mm* | *The same part, measured inside Fusion: 48.62 × 28.42 × 3.02 mm* |
+
+- **Knowledge base** — 299 chunks: build123d's real signatures (extracted from the
+  installed package), 13 executable recipes, ISO 273 / bearing / servo tables, FDM
+  rules, Fusion API pitfalls. BM25 out of the box, hybrid dense if `fastembed` is
+  present. `references/knowledge.md`.
+- **Canvas** — import an image, trace edges, mark hole centres, draw dimension
+  lines, calibrate one line to a known length. Returns millimetres plus a composite
+  PNG for vision models. `references/canvas.md`.
+- **Verified runner** — executes the generated script in a subprocess and reports
+  the *measured* volume, bounding box, solid count and validity. Refuses anything
+  that isn't exactly one valid solid. Then exports STEP/STL.
+- **Fusion hand-off** — the STEP lands in the live document as a new component,
+  which is what finally proves it.
+
+Nothing reaches Fusion until it has been measured. The runner is a guardrail, not a
+sandbox — read the [pitfalls](SKILL.md#pitfalls) before running model-generated code.
+
+Any model can drive it: `cadbridge agent --base-url http://127.0.0.1:8080/v1` talks
+OpenAI-compatible HTTP, so llama.cpp, LM Studio, vLLM, Ollama or a cloud API all work
+through the same retrieve → generate → run → repair → push loop.
+
 ## Security
 
 The socket is **loopback-only and unauthenticated**. Anything running on your machine can drive

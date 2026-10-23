@@ -37,6 +37,23 @@ is re-applied on every installer run, including after re-cloning upstream.
 Upstream has not been asked to take this change; if you re-clone upstream by
 hand instead of using the installer, STEP export will fail again.
 
+## The CAD bridge (`bridge/`)
+
+`bridge/` is first-party code (MIT, same as the rest of this repo). It depends on
+the following, installed into `bridge/.venv` — none of it is vendored here:
+
+| package | licence | why |
+|---------|---------|-----|
+| [build123d](https://github.com/gumyr/build123d) | Apache-2.0 | the CAD kernel wrapper models write against |
+| [OCP](https://github.com/CadQuery/OCP) / OpenCASCADE | LGPL-2.1 (OCCT) | the geometry kernel under build123d, imported as a Python extension |
+| [mcp](https://github.com/modelcontextprotocol/python-sdk) | MIT | the MCP server and client |
+| [playwright](https://github.com/microsoft/playwright) | Apache-2.0 | only for `test_canvas_e2e.py`; not needed at runtime |
+
+The knowledge corpus is hand-written, plus build123d **signatures and docstring
+first paragraphs read from the installed package at index build time** — quoted
+for retrieval, not redistributed as a copy. Autodesk's Fusion API documentation is
+not redistributed; the Fusion chunks are short notes about observed behaviour.
+
 ## Autodesk
 
 Fusion 360 and its API are Autodesk property, governed by the Autodesk terms of

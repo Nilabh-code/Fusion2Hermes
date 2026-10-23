@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cadbridge"
+version = "1.0.0"
+description = "CAD knowledge base, sketch canvas and verified build123d runner, exposed over MCP, with a STEP hand-off into Fusion 360"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Nilabh Yadav" }]
+dependencies = [
+  "build123d>=0.13",
+  "mcp>=1.0",
+]
+
+[project.optional-dependencies]
+dense = ["fastembed>=0.3", "numpy>=1.24"]
+test = ["playwright>=1.40"]
+
+[project.scripts]
+cadbridge = "cadbridge.cli:main"
+
+[tool.setuptools]
+packages = ["cadbridge", "cadbridge.corpus"]
+
+[tool.setuptools.package-data]
+cadbridge = ["corpus/*.json", "corpus/*.npy", "web/*"]
