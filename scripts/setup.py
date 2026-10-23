@@ -188,11 +188,15 @@ def install_addin(upstream: Path) -> Path:
         addins.mkdir(parents=True, exist_ok=True)
 
     if target.exists():
-        backup = target.with_name(f"{ADDIN_DIRNAME}.bak")
+        # Back up OUTSIDE Fusion's AddIns tree: Fusion scans every subfolder there
+        # for a *.manifest, so a Fusion360MCP.bak copy would be loaded as a second
+        # add-in and fight over port 9876.
+        backup = state_dir() / "backups" / f"{ADDIN_DIRNAME}-{time.strftime('%Y%m%d-%H%M%S')}"
+        backup.parent.mkdir(parents=True, exist_ok=True)
         if backup.exists():
             shutil.rmtree(backup, ignore_errors=True)
         shutil.move(str(target), str(backup))
-        say(INFO, f"previous install backed up to {backup.name}")
+        say(INFO, f"previous install moved to {backup}")
     shutil.copytree(upstream / "addon", target)
     say(OK, f"add-in installed at {target}")
 
@@ -339,7 +343,20 @@ def register_mcp(py: Path) -> bool:
 # 5. skill install
 # --------------------------------------------------------------------------- #
 def install_skill() -> Path:
-    dest = hermes_home() / "skills" / "creative" / SKILL_SRC_NAME
+    """Refresh the skill in place.
+
+    `hermes skills install <url>` drops the skill at $HERMES_HOME/skills/<name>/,
+    so install there too - a second copy under a category folder would register
+    the same skill twice.
+    """
+    skills_root = hermes_home() / "skills"
+    dest = skills_root / SKILL_SRC_NAME
+    # retire the category-folder location used by earlier installer versions
+    legacy = skills_root / "creative" / SKILL_SRC_NAME
+    if legacy.is_dir():
+        shutil.rmtree(legacy, ignore_errors=True)
+        say(INFO, f"removed duplicate skill copy at {legacy}")
+
     dest.mkdir(parents=True, exist_ok=True)
     shutil.copy2(ROOT / "SKILL.md", dest / "SKILL.md")
     (dest / "scripts").mkdir(exist_ok=True)
