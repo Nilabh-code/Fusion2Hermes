@@ -71,11 +71,13 @@ them into the current one.
 Two interchangeable routes to the same 93 commands:
 
 - **`mcp_fusion360_*` tools** — preferred once loaded (typed schemas, discovered at connect).
-- **`scripts/fm_client.py`** — raw socket client, works immediately with no restart:
+- **`scripts/fm_client.py`** — raw socket client, works immediately with no restart. Use the copy
+  in the clone (`~/Fusion2Hermes/scripts/fm_client.py`); after `setup.py` runs there is also one
+  beside this skill file at `<skill-dir>/scripts/fm_client.py`.
   ```bash
-  python <skill-dir>/scripts/fm_client.py get_scene_info
-  python <skill-dir>/scripts/fm_client.py create_box_parametric '{"length":40,"width":30,"height":10}'
-  python <skill-dir>/scripts/fm_client.py render_view '{"view":"iso"}'
+  python ~/Fusion2Hermes/scripts/fm_client.py get_scene_info
+  python ~/Fusion2Hermes/scripts/fm_client.py create_box_parametric '{"length":40,"width":30,"height":10}'
+  python ~/Fusion2Hermes/scripts/fm_client.py render_view '{"view":"iso"}'
   ```
 
 Wire protocol (for anything the client can't express): newline-delimited JSON to
